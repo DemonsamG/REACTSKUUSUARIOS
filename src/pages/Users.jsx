@@ -2,7 +2,8 @@ import styles from '../styles/Users.module.css';
 import ReusableModal from '../components/modals/ReusableModal';
 import { userEditFields, userCreationFields } from '../components/config/Users-fieldConfigs';
 import AlertModal from '../components/modals/AlertModal';
-import React, { useState, useEffect } from 'react';
+// MODIFICADO: Importar hooks de React
+import React, { useState, useEffect, useContext } from 'react';
 import {
   Page,
   Bar,
@@ -16,57 +17,27 @@ import {
   MessageBox,
   Text,
   Label,
-  Icon
+  Icon,
+  BusyIndicator // MODIFICADO: Importar BusyIndicator
 } from '@ui5/webcomponents-react';
 
-// Datos de ejemplo 
-const initialUsers = [
-  {
-    USERID: "001",
-    USERNAME: "Johnathan Doe",
-    COMPANYID: 101,
-    CEDIID: 5,
-    EMPLOYEEID: 45012,
-    EMAIL: "john.doe@examplecorp.com",
-    ACTIVED: true,
-    DELETED: false,
-    ALIAS: "JohnnyD",
-    PHONENUMBER: "+525512345678",
-    EXTENSION: "301",
-  },
-  {
-    USERID: "002",
-    USERNAME: "Ana García",
-    COMPANYID: 102,
-    CEDIID: 6,
-    EMPLOYEEID: 45013,
-    EMAIL: "ana.garcia@examplecorp.com",
-    ACTIVED: false,
-    DELETED: false,
-    ALIAS: "Anita",
-    PHONENUMBER: "+525598765432",
-    EXTENSION: "302",
-  },
-];
+// MODIFICADO: Importar DbContext y el servicio
+import { DbContext } from '../contexts/dbContext';
+import * as usersService from '../services/usersService';
 
-// Columnas de la tabla
+// ELIMINADO: const initialUsers = [...]
+
+// Columnas de la tabla (sin cambios)
 const userColumns = [
   { Header: "User ID", accessor: "USERID" },
   { Header: "Nombre de Usuario", accessor: "USERNAME" },
   { Header: "Alias", accessor: "ALIAS" },
-  // { Header: "Compañía ID", accessor: "COMPANYID" },
-  // { Header: "CEDI ID", accessor: "CEDIID" },
-  // { Header: "Empleado ID", accessor: "EMPLOYEEID" },
   { Header: "Correo Electrónico", accessor: "EMAIL" },
-  // {
-  //   Header: "Eliminado", accessor: "DELETED",
-  //   Cell: ({ value }) => (value ? "Sí" : "No")
-  // },
   { Header: "Teléfono", accessor: "PHONENUMBER" },
   { Header: "Extensión", accessor: "EXTENSION" },
   {
     Header: "Activo", accessor: "ACTIVED",
-  Cell: ({ value }) => {
+    Cell: ({ value }) => {
       const isActive = value;
       const statusClass = isActive ? styles.statusActive : styles.statusInactive;
 
@@ -82,205 +53,202 @@ const userColumns = [
 
 
 export default function Users() {
+  // NUEVO: Obtener dbServer del contexto
+  const { dbServer } = useContext(DbContext);
 
-  //Controlar el "hover" de los botones del crud------------------------------------
+  //Controlar el "hover" de los botones (sin cambios)
   const [isHoveredDelete, setisHoveredDelete] = useState(false);
   const [isHoveredAdd, setisHoveredAdd] = useState(false);
   const [isHoveredInfo, setisHoveredInfo] = useState(false);
   const [isHoveredEdit, setisHoveredEdit] = useState(false);
-  //------------------------------------------------------------------------------
-  //Funcionamiento de la barra de busqueda------------------------------------
-  // Estado para guardar la lista original de usuarios (inmutable)
-  const [allUsers, setAllUsers] = useState(initialUsers);
 
-  // Estado para guardar la lista que se mostrará en la tabla (puede cambiar)
-  const [filteredUsers, setFilteredUsers] = useState(initialUsers);
+  // MODIFICADO: Estados de datos
+  const [allUsers, setAllUsers] = useState([]);
+  const [filteredUsers, setFilteredUsers] = useState([]);
+  
+  // NUEVO: Estados de UI (loading/error)
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const handleSearch = (event) => {
-    // Obtiene el texto de búsqueda del input y lo convierte a minúsculas.
-    const query = event.target.value.toLowerCase();
-
-    // Si el input está vacío, muestra todos los datos originales.
-    if (query === '') {
-      setFilteredUsers(allUsers); // 'allUsers' es tu lista original sin filtros
-      return;
-    }
-
-    //  Filtra la lista original
-    const filtered = allUsers.filter((user) => {
-      // Object.values(user) convierte el objeto {name: 'Ana', role: 'Admin'} en ['Ana', 'Admin']
-      // .some() devuelve true si al menos UNA de las columnas cumple la condición.
-      return Object.values(user).some((value) =>
-        // Convierte el valor de la columna a string y minúsculas, y comprueba si incluye el texto de búsqueda.
-        String(value).toLowerCase().includes(query)
-      );
-    });
-
-    // Actualiza el estado con los resultados encontrados.
-    setFilteredUsers(filtered);
-  };
-
-  //------------------------------------------------------------------------------
-  //MODALES DE LOS BOTONES, FUNCIONAMIENTO
-
+  // Estados de Modales (sin cambios)
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
-
-  //***************Logica de fila*****************
-  //fila seleccionada
   const [selectedRow, setSelectedRow] = useState(null);
-
-  const handleRowSelect = (event) => {
-    // 1. Obtenemos el ARRAY de todas las filas seleccionadas
-    const selectedRows = event.detail.row;
-    // 2. Comprobamos si esta fila está AHORA seleccionada
-    if (selectedRows.isSelected) {
-      // Si es 'true', la guardamos en el estado
-      setSelectedRow(selectedRows.original);
-    } else {
-      // Si es 'false', significa que el usuario acaba de deseleccionarla.
-      // Limpiamos el estado.
-      setSelectedRow(null);
-    }
-
-  };
-  // Estados para controlar la visibilidad de los modales de crear y editar
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-  //************Crear******************************** */
-  const handleCreateUser = (userData) => {
-    // 'userData' son los datos que vienen del formulario del modal
-    console.log('Crear usuario:', userData);
-
-    // 1. Simulamos un ID único (en un caso real, esto lo daría la BD)
-    // Usar la fecha actual en milisegundos es una forma simple de simular un ID.
-    // Lo convertimos a string para que coincida con tus otros USERID.
-    const newId = Date.now().toString();
-
-    // 2. Creamos el objeto de usuario completo
-    const newUser = {
-      ...userData,
-      USERID: newId // Asignamos el nuevo ID simulado
-      // Asegúrate de que 'userData' (del modal) ya traiga los demás campos:
-      // USERNAME, COMPANYID, CEDIID, etc.
-    };
-
-    // 3. Añadimos el nuevo usuario al INICIO de ambas listas
-    // Esto crea un nuevo array con el 'newUser' primero,
-    // seguido de todos los usuarios anteriores.
-    setAllUsers(prevUsers => [newUser, ...prevUsers]);
-    setFilteredUsers(prevUsers => [newUser, ...prevUsers]);
-
-    // 4. Cerramos el modal
-    setShowCreateModal(false);
-  };
-  //************Edit******************************** */
-
-  // FUNCIÓN 2: Para el botón "Guardar" de DENTRO del modal
-  const handleEditUser = (updatedUserData) => {
-    // 'updatedUserData' son los datos que vienen del formulario del modal
-    console.log('Guardando cambios:', updatedUserData);
-
-    // 1. AHORA SÍ: Lee 'editingUser' del estado.
-    // En este punto, 'editingUser' SÍ tiene el valor que guardamos en handleEditClick.
-    const userIdToUpdate = editingUser.USERID;
-
-    // 2. Crea el objeto actualizado
-    const updatedUser = { ...editingUser, ...updatedUserData };
-
-    // 3. Actualiza ambas listas
-    setAllUsers(prevUsers =>
-      prevUsers.map(user =>
-        user.USERID === userIdToUpdate ? updatedUser : user
-      )
-    );
-    setFilteredUsers(prevUsers =>
-      prevUsers.map(user =>
-        user.USERID === userIdToUpdate ? updatedUser : user
-      )
-    );
-
-    // 4. Cierra el modal y limpia todo
-    setShowEditModal(false);
-    setEditingUser(null);
-    setSelectedRow(null);
-  };
-
-  // FUNCIÓN 1: Para el botón "Editar" de la barra de herramientas
-  const handleEditClick = (userToEdit) => {
-    // 'userToEdit' es el 'selectedRow' que le pasas
-
-    if (!userToEdit) {
-      console.error("handleEditClick fue llamado sin un usuario. Esto no debería pasar.");
-      return;
-    }
-
-    console.log("Abriendo modal para editar:", userToEdit);
-
-    // 1. Guarda el usuario original en el estado
-    setEditingUser(userToEdit);
-
-    // 2. Abre el modal
-    setShowEditModal(true);
-
-    // ¡Eso es todo! Esta función no hace nada más.
-  };
-  //**************Info******************************** */
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedUserData, setSelectedUserData] = useState(null);
 
+  // NUEVO: Función para cargar datos
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await usersService.getUsers(dbServer);
+      setAllUsers(data);
+      setFilteredUsers(data);
+    } catch (err) {
+      setError(err.message || "Error al cargar usuarios");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // NUEVO: useEffect para cargar datos al inicio
+  useEffect(() => {
+    loadUsers();
+  }, [dbServer]); // Recargar si cambia el dbServer
+
+  // handleSearch (sin cambios)
+  const handleSearch = (event) => {
+    const query = event.target.value.toLowerCase();
+    if (query === '') {
+      setFilteredUsers(allUsers);
+      return;
+    }
+    const filtered = allUsers.filter((user) => {
+      return Object.values(user).some((value) =>
+        String(value).toLowerCase().includes(query)
+      );
+    });
+    setFilteredUsers(filtered);
+  };
+
+  // handleRowSelect (sin cambios)
+  const handleRowSelect = (event) => {
+    const row = event.detail?.row;
+    if (row && row.isSelected) {
+      setSelectedRow(row.original);
+    } else {
+      setSelectedRow(null);
+    }
+  };
+
+  // --- Lógica CRUD Modificada ---
+
+  // MODIFICADO: handleCreateUser
+  const handleCreateUser = async (userData) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const newUser = await usersService.createUser(userData, dbServer);
+      
+      // Actualizar estado local
+      setAllUsers(prevUsers => [newUser, ...prevUsers]);
+      setFilteredUsers(prevUsers => [newUser, ...prevUsers]);
+      
+      setShowCreateModal(false);
+    } catch (err) {
+      setError(err.message || "Error al crear usuario");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // MODIFICADO: handleEditUser
+  const handleEditUser = async (updatedUserData) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const userIdToUpdate = editingUser.USERID;
+      // Combina los datos antiguos y nuevos
+      const updatedUser = await usersService.updateUser({ ...editingUser, ...updatedUserData }, dbServer);
+      
+      // Actualiza ambas listas
+      setAllUsers(prevUsers =>
+        prevUsers.map(user =>
+          user.USERID === userIdToUpdate ? updatedUser : user
+        )
+      );
+      setFilteredUsers(prevUsers =>
+        prevUsers.map(user =>
+          user.USERID === userIdToUpdate ? updatedUser : user
+        )
+      );
+      
+      setShowEditModal(false);
+      setEditingUser(null);
+      setSelectedRow(null);
+    } catch (err) {
+      setError(err.message || "Error al actualizar usuario");
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // handleEditClick (sin cambios)
+  const handleEditClick = (userToEdit) => {
+    if (!userToEdit) return;
+    setEditingUser(userToEdit);
+    setShowEditModal(true);
+  };
+  
+  // handleShowDetails / handleCloseDetails (sin cambios)
   const handleShowDetails = (userData) => {
     setSelectedUserData(userData);
     setIsDetailModalOpen(true);
   };
-
   const handleCloseDetails = () => {
     setIsDetailModalOpen(false);
     setSelectedUserData(null);
   };
-  //************Delete******************************** */
-  const handleDeleteClick = ({ USERID }) => {
-    console.log(`BORRANDO el item con id: ${USERID}`);
-    //Simula el borrado en la lista de datos "maestra"
-    setAllUsers(prevUsers =>
-      prevUsers.filter(user => user.USERID !== USERID)
-    );
 
-    // Simula el borrado en la lista filtrada (la que ve el usuario)
-    setFilteredUsers(prevUsers =>
-      prevUsers.filter(user => user.USERID !== USERID)
-    );
+  // MODIFICADO: handleDeleteClick (ahora separada)
+  const handleDeleteClick = async (item) => {
+    try {
+      setLoading(true);
+      setError(null);
+      await usersService.deleteUser(item.USERID, dbServer);
 
-    //  Limpia la selección para deshabilitar los botones
-    setSelectedRow(null);
+      // Actualizar estado local (simulando borrado lógico/físico)
+      // Para un borrado lógico real, deberías recargar o marcar como DELETED=true
+      setAllUsers(prevUsers =>
+        prevUsers.filter(user => user.USERID !== item.USERID)
+      );
+      setFilteredUsers(prevUsers =>
+        prevUsers.filter(user => user.USERID !== item.USERID)
+      );
+      
+      setSelectedRow(null);
+    } catch (err) {
+      setError(err.message || "Error al eliminar usuario");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Esta es la función que llama el botón
-  // Esta es la función que maneja el cierre del modal
+  // MODIFICADO: handleModalClose
   const handleModalClose = (event) => {
-    //  Cierra el modal sin importar lo que se presionó
     setShowConfirmModal(false);
-
-    // Comprueba qué botón se presionó
     if (event === "Sí") {
-      // Si fue "Sí", ejecuta el borrado real con el item guardado
-      handleDeleteClick(itemToDelete);
+      handleDeleteClick(itemToDelete); // Llama a la función async
     }
-
-    // Limpia el item guardado
     setItemToDelete(null);
   };
-  // Función para *abrir* el modal de confirmación
+
+  // handleOpenConfirmModal (sin cambios)
   const handleOpenConfirmModal = (item) => {
-    setItemToDelete(item);    // Guarda el item que queremos borrar
-    setShowConfirmModal(true); // Abre el modal
+    setItemToDelete(item);
+    setShowConfirmModal(true);
   };
 
-  //-----------------------------------------------------------------------------
+  // --- Render ---
   return (
     <Page className={styles.pageContainer}>
       <Bar><Title className={styles.titlePageName}>Usuarios</Title></Bar>
+
+      {/* NUEVO: Indicador de carga y error */}
+      {loading && <BusyIndicator active style={{ width: '100%' }} />}
+      {error && (
+        <AlertModal
+          open={!!error}
+          onClose={() => setError(null)}
+          title="Error"
+          design="Negative"
+          message={<Text>{error}</Text>}
+        />
+      )}
 
       <AnalyticalTable
         data={filteredUsers}
@@ -293,8 +261,6 @@ export default function Users() {
         noDataText="No se encontraron registros"
         header={
           <Toolbar className={styles.barTable}>
-
-            {/* Contenedor para los botones y el input*/}
             <FlexBox className={styles.buttonGroupContainer}>
               <Input
                 type="search"
@@ -309,6 +275,7 @@ export default function Users() {
                 onMouseEnter={() => setisHoveredAdd(true)}
                 onMouseLeave={() => setisHoveredAdd(false)}
                 onClick={() => setShowCreateModal(true)}
+                disabled={loading} // MODIFICADO
               />
               <ToolbarButton
                 icon='hint'
@@ -316,7 +283,7 @@ export default function Users() {
                 onMouseEnter={() => setisHoveredInfo(true)}
                 onMouseLeave={() => setisHoveredInfo(false)}
                 onClick={() => handleShowDetails(selectedRow)}
-                disabled={!selectedRow} // Se deshabilita si selectedRow es null
+                disabled={!selectedRow || loading} // MODIFICADO
               />
               <ToolbarButton
                 icon='edit'
@@ -324,7 +291,7 @@ export default function Users() {
                 onMouseEnter={() => setisHoveredEdit(true)}
                 onMouseLeave={() => setisHoveredEdit(false)}
                 onClick={() => handleEditClick(selectedRow)}
-                disabled={!selectedRow} // Se deshabilita si selectedRow es null
+                disabled={!selectedRow || loading} // MODIFICADO
               />
               <ToolbarButton
                 icon='delete'
@@ -332,20 +299,16 @@ export default function Users() {
                 onMouseEnter={() => setisHoveredDelete(true)}
                 onMouseLeave={() => setisHoveredDelete(false)}
                 onClick={() => handleOpenConfirmModal(selectedRow)}
-                disabled={!selectedRow} // Se deshabilita si selectedRow es null}
+                disabled={!selectedRow || loading} // MODIFICADO
               />
             </FlexBox>
-            {/* Este componente empuja todo lo que sigue a la derecha */}
             <ToolbarSpacer />
-
             <Title>Usuarios ({filteredUsers.length})</Title>
-
           </Toolbar>
         }
       />{/* Fin Barra de busqueda y crud */}
 
-      {/* Modales  */}
-      {/* Modal para creación */}
+      {/* Modales (sin cambios en sus props) */}
       <ReusableModal
         open={showCreateModal}
         onClose={() => setShowCreateModal(false)}
@@ -355,7 +318,6 @@ export default function Users() {
         submitButtonText="Crear Usuario"
       />
 
-      {/* Modal para edición */}
       <ReusableModal
         open={showEditModal}
         onClose={() => {
@@ -366,9 +328,9 @@ export default function Users() {
         fields={userEditFields}
         onSubmit={handleEditUser}
         submitButtonText="Guardar Cambios"
-        initialData={editingUser} // Puedes agregar esta prop para valores iniciales
+        initialData={editingUser}
       />
-      {/* Modal para detalles */}
+      
       {selectedUserData && (
         <AlertModal
           open={isDetailModalOpen}
@@ -400,16 +362,16 @@ export default function Users() {
           }
         />
       )};
+
       <MessageBox
         open={showConfirmModal}
         titleText="Confirmar eliminación"
         actions={["Sí", "No"]}
-        type="Warning"  // <-- Esto le da el ícono y estilo de "Atención"
+        type="Warning"
         onClose={handleModalClose}
       >
         ¿Está seguro de que desea eliminarlo?
       </MessageBox>
     </Page>
-
   );
 }

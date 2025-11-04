@@ -1,7 +1,7 @@
-import styles from '../styles/Users.module.css'; // Reutilizamos estilos de Users
-import ReusableModal from '../components/modals/ReusableModal';
-import { privilegeFields } from '../components/config/RoleAppPrivileges-fieldConfigs';
-import AlertModal from '../components/modals/AlertModal';
+import styles from '../styles/Users.module.css'; // Reutilizamos estilos
+import ReusableModal from '../components/modals/ReusableModal.jsx';
+import { roleGroupFields } from '../components/config/RoleGroups-fieldConfigs.js';
+import AlertModal from '../components/modals/AlertModal.jsx';
 import React, { useState, useEffect, useContext } from 'react';
 import {
   Page,
@@ -19,24 +19,24 @@ import {
   BusyIndicator
 } from '@ui5/webcomponents-react';
 
-import { DbContext } from '../contexts/dbContext';
-// CORREGIDO: Añadido .js al final
-import * as privilegeService from '../services/roleAppPrivilegesService.js'; 
+import { DbContext } from '../contexts/dbContext.jsx';
+import * as roleGroupService from '../services/roleGroupsService.js'; // Servicio MOCK
 
 // Columnas de la tabla
-const privilegeColumns = [
+const roleGroupColumns = [
   { Header: "ID Rol", accessor: "ROLEID" },
-  { Header: "ID App", accessor: "APPID" },
-  { Header: "ID Privilegio", accessor: "PRIVILEGEID" },
-  { Header: "ID Proceso", accessor: "PROCESSID" },
-  { Header: "ID Vista", accessor: "VIEWID" },
+  { Header: "Sociedad", accessor: "IDSOCIEDAD" },
+  { Header: "CEDI", accessor: "IDCEDI" },
+  { Header: "Grupo ET", accessor: "IDGRUPOET" },
+  { Header: "ID", accessor: "ID" },
+  { Header: "Privilegio", accessor: "PRIVILEGIEID" },
   {
     Header: "Activo", accessor: "ACTIVED",
     Cell: ({ value }) => (value ? "Sí" : "No")
   },
 ];
 
-export default function RoleAppPrivileges() {
+export default function RoleGroups() {
   const { dbServer } = useContext(DbContext);
 
   const [allItems, setAllItems] = useState([]);
@@ -55,7 +55,7 @@ export default function RoleAppPrivileges() {
     try {
       setLoading(true);
       setError(null);
-      const data = await privilegeService.getPrivileges(dbServer);
+      const data = await roleGroupService.getRoleGroups(dbServer);
       setAllItems(data);
       setFilteredItems(data);
     } catch (err) {
@@ -95,8 +95,7 @@ export default function RoleAppPrivileges() {
   const handleCreate = async (formData) => {
     try {
       setLoading(true);
-      const result = await privilegeService.createPrivilege(formData, dbServer);
-      const newItem = result[0] || { ...formData }; // insertMany devuelve array
+      const newItem = await roleGroupService.createRoleGroup(formData, dbServer);
       setAllItems(prev => [newItem, ...prev]);
       setFilteredItems(prev => [newItem, ...prev]);
       setShowCreateModal(false);
@@ -116,15 +115,12 @@ export default function RoleAppPrivileges() {
   const handleEdit = async (updatedData) => {
     try {
       setLoading(true);
-      // La API no tiene 'Update', usamos la simulación de 'updatePrivilege'
-      const updatedItem = await privilegeService.updatePrivilege(editingItem, updatedData, dbServer);
+      const updatedItem = await roleGroupService.updateRoleGroup(updatedData, dbServer);
       
       const keyMatcher = (item) =>
         item.ROLEID === editingItem.ROLEID &&
-        item.APPID === editingItem.APPID &&
-        item.PRIVILEGEID === editingItem.PRIVILEGEID &&
-        item.PROCESSID === editingItem.PROCESSID &&
-        item.VIEWID === editingItem.VIEWID;
+        item.IDSOCIEDAD === editingItem.IDSOCIEDAD &&
+        item.PRIVILEGIEID === editingItem.PRIVILEGIEID; // Llave simple simulada
 
       setAllItems(prev => prev.map(item => keyMatcher(item) ? updatedItem : item));
       setFilteredItems(prev => prev.map(item => keyMatcher(item) ? updatedItem : item));
@@ -148,15 +144,12 @@ export default function RoleAppPrivileges() {
   const handleDelete = async (item) => {
     try {
       setLoading(true);
-      await privilegeService.deletePrivilege(item, dbServer); // API usa borrado lógico
+      await roleGroupService.deleteRoleGroup(item, dbServer); // Borrado lógico simulado
       
-      // En lugar de filtrar, marcamos como DELETED = true
       const keyMatcher = (i) =>
         i.ROLEID === item.ROLEID &&
-        i.APPID === item.APPID &&
-        i.PRIVILEGEID === item.PRIVILEGEID &&
-        i.PROCESSID === item.PROCESSID &&
-        i.VIEWID === item.VIEWID;
+        i.IDSOCIEDAD === item.IDSOCIEDAD &&
+        i.PRIVILEGIEID === item.PRIVILEGIEID; // Llave simple simulada
 
       setAllItems(prev => prev.filter(i => !keyMatcher(i)));
       setFilteredItems(prev => prev.filter(i => !keyMatcher(i)));
@@ -179,7 +172,7 @@ export default function RoleAppPrivileges() {
 
   return (
     <Page className={styles.pageContainer}>
-      <Bar><Title className={styles.titlePageName}>Privilegios de App (ZTROL_APP_PRI_PRO)</Title></Bar>
+      <Bar><Title className={styles.titlePageName}>Grupos de Roles (ZTROLE_GRUPOSET)</Title></Bar>
 
       {loading && <BusyIndicator active style={{ width: '100%' }} />}
       {error && (
@@ -194,7 +187,7 @@ export default function RoleAppPrivileges() {
 
       <AnalyticalTable
         data={filteredItems}
-        columns={privilegeColumns}
+        columns={roleGroupColumns}
         selectionMode="SingleSelect"
         onRowSelect={handleRowSelect}
         visibleRows={12}
@@ -238,16 +231,16 @@ export default function RoleAppPrivileges() {
       <ReusableModal
         open={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        title="Crear Privilegio"
-        fields={privilegeFields}
+        title="Crear Grupo de Rol"
+        fields={roleGroupFields}
         onSubmit={handleCreate}
         submitButtonText="Crear"
       />
       <ReusableModal
         open={showEditModal}
         onClose={() => setShowEditModal(false)}
-        title="Editar Privilegio"
-        fields={privilegeFields}
+        title="Editar Grupo de Rol"
+        fields={roleGroupFields}
         onSubmit={handleEdit}
         submitButtonText="Guardar Cambios"
         initialData={editingItem}
@@ -259,7 +252,7 @@ export default function RoleAppPrivileges() {
         type="Warning"
         onClose={handleModalClose}
       >
-        ¿Está seguro de que desea eliminarlo (borrado lógico)?
+        ¿Está seguro de que desea eliminarlo (simulado)?
       </MessageBox>
     </Page>
   );

@@ -8,7 +8,7 @@ import Users from './pages/Users.jsx';
 import Roles from './pages/Roles.jsx';
 import Privileges from './pages/Privileges.jsx';
 import Login from './pages/Login.jsx';
-import Process from './pagesG/Process.jsx';
+import Process from './pages/Process.jsx'; // <-- CORREGIDO (eliminado 'pagesG/')
 import Apps from './pages/Apps.jsx';
 import { Configuracion } from './pages/Configuracion.jsx';
 
